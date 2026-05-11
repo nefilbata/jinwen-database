@@ -254,6 +254,7 @@ footer{background:var(--paper-warm);border-top:1px solid var(--line);padding:40p
     <div class="topic-select-wrap">
       <span class="topic-label">专题</span>
       <select class="topic-select" id="topicSelect">
+        <option value="00">全部文献</option>
         <option value="01">新出器物</option>
         <option value="02">字词句考释</option>
         <option value="03">政治经济</option>
@@ -324,6 +325,13 @@ footer{background:var(--paper-warm);border-top:1px solid var(--line);padding:40p
       <input class="filter-input" type="text" id="listSearch" placeholder="检索题目、作者、摘要…">
       <select class="filter-select" id="yearFilter"><option value="">全部年份</option></select>
       <select class="filter-select" id="catFilter"><option value="">全部分类</option></select>
+      <select class="filter-select" id="sortSelect">
+        <option value="default">默认排序</option>
+        <option value="year_desc">年份↓新→旧</option>
+        <option value="year_asc">年份↑旧→新</option>
+        <option value="title_asc">题目 A→Z</option>
+        <option value="author_asc">作者 A→Z</option>
+      </select>
       <button class="filter-clear" id="clearFilter">清除筛选</button>
     </div>
     <div class="cards-grid" id="cardsGrid"></div>
@@ -414,6 +422,7 @@ const CAT_NAMES = {
 const cn = c => CAT_NAMES[c] || c;
 
 const TOPIC_CONFIG = [
+  {num:'00',key:'all',name:'全部文献',title1:'以金文为证',title2:'览二十一世纪金文研究全貌',desc:'2001—2025年间全部九大专题金文研究文献',kws:['金文','铭文','西周','考释','断代']},
   {num:'01',key:'01_新出器物',name:'新出器物',title1:'以金文为证',title2:'探新出器物之形',desc:'新发现及新公布的西周金文器物研究',kws:['新出','新见','著录','器形']},
   {num:'02',key:'02_字词句考释',name:'字词句考释',title1:'以金文为证',title2:'求字词句读之义',desc:'金文字词训诂、句读与铭文考释研究',kws:['考释','训诂','铭文','字形']},
   {num:'03',key:'03_政治经济',name:'政治经济',title1:'以金文为证',title2:'考政治经济之制',desc:'西周政治制度、经济形态相关金文研究',kws:['册命','赏赐','礼制','分封']},
@@ -448,6 +457,16 @@ let _authorMap = {};
 
 function getTopicData(num) {
   if (!ALL_DATA) ALL_DATA = getAllData();
+  if (num === '00') {
+    // 全部文献：合并去重
+    const allItems = Object.values(ALL_DATA).flat();
+    const seen = new Set();
+    return allItems.filter(d => {
+      if (seen.has(d.id)) return false;
+      seen.add(d.id);
+      return true;
+    });
+  }
   return ALL_DATA[num] || [];
 }
 
@@ -499,7 +518,11 @@ function renderCards(items) {
   grid.innerHTML = items.map((d,i)=>{
     const absId='abs'+i;
     const hasAbs = d.abstract && d.abstract.trim().length>0;
-    const cats = (d.categories||[]).map(c=>'<span class="cat-tag '+(c===TOPIC_CONFIG.find(t=>t.num===currentTopicNum)?.key?'primary':'secondary')+'">'+cn(c)+'</span>').join('');
+    const currentKey = TOPIC_CONFIG.find(t=>t.num===currentTopicNum)?.key;
+    const cats = (d.categories||[]).map(c=>{
+      const isPrimary = currentTopicNum==='00' ? true : c===currentKey;
+      return '<span class="cat-tag '+(isPrimary?'primary':'secondary')+'">'+cn(c)+'</span>';
+    }).join('');
     const pagesStr=[d.volume&&'卷'+d.volume,d.pages&&'pp.'+d.pages].filter(Boolean).join('　');
     return '<article class="card">'
       +'<div class="card-header"><div class="card-cats">'+cats+'</div><div class="card-year">'+(d.year||'—')+'</div></div>'
@@ -544,18 +567,25 @@ function applyFilter() {
   const q=listSearch.value.trim().toLowerCase();
   const y=yf.value, c=cf.value;
   const scope=document.getElementById('searchScope').value;
-  const filtered=currentData.filter(d=>{
+  const sortVal=document.getElementById('sortSelect').value;
+  let filtered=currentData.filter(d=>{
     if(y&&String(d.year)!==y) return false;
     if(c&&!(d.categories||[]).includes(c)) return false;
     if(q){let hay=scope==='title'?d.title:scope==='author'?d.author:scope==='publication'?(d.publication||''):scope==='abstract'?(d.abstract||''):(d.title+' '+(d.author||'')+' '+(d.publication||'')+' '+(d.abstract||''));if(!hay.toLowerCase().includes(q)) return false;}
     return true;
   });
+  // Sort
+  if(sortVal==='year_desc') filtered.sort((a,b)=>(b.year||0)-(a.year||0));
+  else if(sortVal==='year_asc') filtered.sort((a,b)=>(a.year||0)-(b.year||0));
+  else if(sortVal==='title_asc') filtered.sort((a,b)=>(a.title||'').localeCompare(b.title||'','zh'));
+  else if(sortVal==='author_asc') filtered.sort((a,b)=>(a.author||'').localeCompare(b.author||'','zh'));
   renderCards(filtered);
 }
 listSearch.addEventListener('input', applyFilter);
 yf.addEventListener('change', applyFilter);
 cf.addEventListener('change', applyFilter);
-document.getElementById('clearFilter').addEventListener('click',()=>{listSearch.value='';yf.value='';cf.value='';applyFilter();});
+document.getElementById('sortSelect').addEventListener('change', applyFilter);
+document.getElementById('clearFilter').addEventListener('click',()=>{listSearch.value='';yf.value='';cf.value='';document.getElementById('sortSelect').value='default';applyFilter();});
 
 function heroSearch(){
   const v=document.getElementById('heroSearch').value.trim();
